@@ -1,7 +1,7 @@
 {
   "name": "video-processor",
   "version": "1.0.0",
-  "description": "Servidor FFmpeg para procesar videos automáticamente",
+  "description": "Servidor FFmpeg con Microsoft Edge TTS para procesar videos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
