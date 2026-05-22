@@ -1,12 +1,12 @@
 const express = require("express");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 const TMP = "/tmp/videos";
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
@@ -33,9 +33,27 @@ function download(url, dest) {
 
 function run(cmd) {
   return new Promise((resolve, reject) => {
-    exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+    exec(cmd, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
       if (err) return reject(stderr || err.message);
       resolve(stdout);
+    });
+  });
+}
+
+// Genera voz con edge-tts (Microsoft TTS - completamente gratis)
+function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
+  return new Promise((resolve, reject) => {
+    // Voces disponibles en español:
+    // es-PY-TaniaNeural (Paraguay - mujer)
+    // es-PY-MarioNeural (Paraguay - hombre)
+    // es-MX-DaliaNeural (México - mujer)
+    // es-MX-JorgeNeural (México - hombre)
+    // es-ES-ElviraNeural (España - mujer)
+    // es-AR-ElenaNeural (Argentina - mujer)
+    const cmd = `edge-tts --voice "${voice}" --text "${text.replace(/"/g, "'")}" --write-media "${audioPath}"`;
+    exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+      if (err) return reject(stderr || err.message);
+      resolve(audioPath);
     });
   });
 }
@@ -61,11 +79,8 @@ function uploadToDropbox(filePath, dropboxPath, token) {
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch {
-          reject(data);
-        }
+        try { resolve(JSON.parse(data)); }
+        catch { reject(data); }
       });
     });
     req.on("error", reject);
@@ -76,7 +91,11 @@ function uploadToDropbox(filePath, dropboxPath, token) {
 
 function getDropboxLink(dropboxPath, token) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ path: dropboxPath });
+    // Primero intentar crear el link
+    const body = JSON.stringify({
+      path: dropboxPath,
+      settings: { requested_visibility: "public" }
+    });
     const options = {
       hostname: "api.dropboxapi.com",
       path: "/2/sharing/create_shared_link_with_settings",
@@ -93,11 +112,17 @@ function getDropboxLink(dropboxPath, token) {
       res.on("end", () => {
         try {
           const parsed = JSON.parse(data);
-          const url = (parsed.url || "").replace("www.dropbox.com", "dl.dropboxusercontent.com").replace("?dl=0", "");
-          resolve(url);
-        } catch {
-          reject(data);
-        }
+          // Si ya existe el link, Dropbox devuelve el link existente en el error
+          const url = parsed.url || (parsed.error && parsed.error[".tag"] === "shared_link_already_exists" 
+            ? parsed.error.metadata.url 
+            : null);
+          if (url) {
+            const directUrl = url.replace("www.dropbox.com", "dl.dropboxusercontent.com").replace("?dl=0", "");
+            resolve(directUrl);
+          } else {
+            reject(JSON.stringify(parsed));
+          }
+        } catch { reject(data); }
       });
     });
     req.on("error", reject);
@@ -106,30 +131,19 @@ function getDropboxLink(dropboxPath, token) {
   });
 }
 
-// ─── Efectos disponibles ─────────────────────────────────────────────────────
-// Cada video recibe un efecto diferente basado en su índice (0-39)
+// ─── Efectos de video ────────────────────────────────────────────────────────
 
 function getEffect(index) {
   const effects = [
-    // Zoom in suave
     "zoompan=z='min(zoom+0.0015,1.3)':d=125:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-    // Zoom out suave
     "zoompan=z='if(lte(zoom,1.0),1.3,max(1.001,zoom-0.0015))':d=125:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-    // Pan izquierda a derecha
     "zoompan=z=1.2:x='if(lte(on,1),0,x+1.5)':y='ih/2-(ih/zoom/2)':d=125",
-    // Pan derecha a izquierda
     "zoompan=z=1.2:x='if(lte(on,1),iw,x-1.5)':y='ih/2-(ih/zoom/2)':d=125",
-    // Zoom in + pan diagonal
     "zoompan=z='min(zoom+0.001,1.25)':x='iw/2-(iw/zoom/2)+on*0.5':y='ih/2-(ih/zoom/2)':d=125",
-    // Sin efecto (video normal)
     "null",
-    // Brillo ligeramente aumentado
     "eq=brightness=0.05",
-    // Contraste ligeramente aumentado
     "eq=contrast=1.1",
-    // Saturación aumentada
     "eq=saturation=1.2",
-    // Velocidad ligeramente más rápida (1.05x)
     "setpts=0.95*PTS",
   ];
   return effects[index % effects.length];
@@ -142,10 +156,10 @@ function getEffect(index) {
  * Body:
  * {
  *   video_url: "https://dl.dropboxusercontent.com/.../video.mp4",
- *   audio_url: "https://api.elevenlabs.io/.../audio.mp3",
- *   music_url: "https://dl.dropboxusercontent.com/.../music.mp3",
- *   output_name: "video_par1_vid1.mp4",
- *   effect_index: 0,   // 0-39 para efectos diferentes
+ *   text: "Texto del guión para la voz en off",
+ *   voice: "es-PY-TaniaNeural",  (opcional)
+ *   music_url: "https://dl.dropboxusercontent.com/.../music.mp3",  (opcional)
+ *   effect_index: 0,
  *   dropbox_token: "tu_token_dropbox",
  *   dropbox_output_path: "/Videos-Procesados/video_par1_vid1.mp4"
  * }
@@ -153,16 +167,16 @@ function getEffect(index) {
 app.post("/process-video", async (req, res) => {
   const {
     video_url,
-    audio_url,
+    text,
+    voice = "es-PY-TaniaNeural",
     music_url,
-    output_name,
     effect_index = 0,
     dropbox_token,
     dropbox_output_path,
   } = req.body;
 
-  if (!video_url || !audio_url || !dropbox_token || !dropbox_output_path) {
-    return res.status(400).json({ error: "Faltan parámetros obligatorios" });
+  if (!video_url || !text || !dropbox_token || !dropbox_output_path) {
+    return res.status(400).json({ error: "Faltan parámetros: video_url, text, dropbox_token, dropbox_output_path" });
   }
 
   const id = Date.now() + "_" + Math.random().toString(36).slice(2);
@@ -172,40 +186,41 @@ app.post("/process-video", async (req, res) => {
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
   try {
-    // 1. Descargar archivos
-    console.log("Descargando video...");
+    // 1. Descargar video base
+    console.log("📥 Descargando video...");
     await download(video_url, videoPath);
 
-    console.log("Descargando audio (voz)...");
-    await download(audio_url, audioPath);
+    // 2. Generar voz en off con edge-tts (Microsoft TTS - gratis)
+    console.log("🎙️ Generando voz en off con Microsoft TTS...");
+    await generateVoice(text, audioPath, voice);
 
+    // 3. Descargar música de fondo (opcional)
     if (music_url && musicPath) {
-      console.log("Descargando música de fondo...");
+      console.log("🎵 Descargando música de fondo...");
       await download(music_url, musicPath);
     }
 
-    // 2. Obtener duración del audio de voz
+    // 4. Obtener duración del audio
     const durationOut = await run(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
     );
     const audioDuration = parseFloat(durationOut.trim()) + 0.5;
+    console.log(`⏱️ Duración del audio: ${audioDuration}s`);
 
-    // 3. Construir filtros de video
+    // 5. Construir filtros de video
     const effect = getEffect(effect_index);
-    let videoFilter = effect === "null" ? "" : `-vf "${effect}"`;
+    const videoFilter = effect === "null" ? "" : `-vf "${effect}"`;
 
-    // 4. Construir comando FFmpeg
+    // 6. Construir comando FFmpeg
     let ffmpegCmd;
-
     if (music_url && musicPath) {
-      // Video + voz en off + música de fondo
       ffmpegCmd = `ffmpeg -y \
         -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
         -stream_loop -1 -i "${musicPath}" \
         -filter_complex "\
           [1:a]volume=1.0[voice];\
-          [2:a]volume=0.15,atrim=0:${audioDuration}[music];\
+          [2:a]volume=0.12,atrim=0:${audioDuration}[music];\
           [voice][music]amix=inputs=2:duration=first[aout]\
         " \
         ${videoFilter} \
@@ -216,7 +231,6 @@ app.post("/process-video", async (req, res) => {
         -shortest \
         "${outputPath}"`;
     } else {
-      // Video + solo voz en off
       ffmpegCmd = `ffmpeg -y \
         -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
@@ -229,17 +243,17 @@ app.post("/process-video", async (req, res) => {
         "${outputPath}"`;
     }
 
-    console.log("Procesando video con FFmpeg...");
+    console.log("🎬 Procesando video con FFmpeg...");
     await run(ffmpegCmd);
 
-    // 5. Subir a Dropbox
-    console.log("Subiendo a Dropbox...");
+    // 7. Subir a Dropbox
+    console.log("☁️ Subiendo a Dropbox...");
     await uploadToDropbox(outputPath, dropbox_output_path, dropbox_token);
 
-    // 6. Obtener link de Dropbox
+    // 8. Obtener link público
     const dropboxUrl = await getDropboxLink(dropbox_output_path, dropbox_token);
 
-    // 7. Limpiar archivos temporales
+    // 9. Limpiar temporales
     [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
@@ -248,7 +262,7 @@ app.post("/process-video", async (req, res) => {
     res.json({ success: true, url: dropboxUrl, output: dropbox_output_path });
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error("❌ Error:", err);
     [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
@@ -257,7 +271,12 @@ app.post("/process-video", async (req, res) => {
 });
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Video server running" }));
+app.get("/", (req, res) => res.json({ 
+  status: "ok", 
+  message: "Video server running",
+  tts: "Microsoft Edge TTS (gratis)",
+  effects: "FFmpeg zoom/pan/brightness/contrast"
+}));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
