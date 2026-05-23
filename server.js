@@ -324,8 +324,8 @@ app.post("/process-video", async (req, res) => {
     dropbox_output_path,
   } = req.body;
 
-  if ((!video_url && !video_path) || !text || !dropbox_token || !dropbox_output_path) {
-    return res.status(400).json({ error: "Faltan parámetros: video_url o video_path, text, dropbox_token, dropbox_output_path" });
+  if ((!video_url && !video_path) || !text || !dropbox_output_path) {
+    return res.status(400).json({ error: "Faltan parámetros: video_url o video_path, text, dropbox_output_path" });
   }
 
   const id = Date.now() + "_" + Math.random().toString(36).slice(2);
@@ -334,10 +334,9 @@ app.post("/process-video", async (req, res) => {
   const musicPath = music_url ? path.join(TMP, `music_${id}.mp3`) : null;
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
-  // Obtener token fresco automáticamente
-  const freshToken = await getDropboxToken();
-
   try {
+    // Obtener token fresco automáticamente
+    const freshToken = await getDropboxToken();
     console.log("📥 Descargando video...");
     if (video_path && video_path.trim() !== "") {
       console.log("📂 Descargando desde Dropbox API path:", video_path);
