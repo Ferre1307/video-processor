@@ -289,8 +289,19 @@ app.post("/process-video", async (req, res) => {
   try {
     console.log("📥 Descargando video...");
     if (video_path && video_path.trim() !== "") {
-      console.log("📂 Descargando desde Dropbox path:", video_path);
-      await downloadFromDropbox(video_path, videoPath, dropbox_token);
+      // Si es una URL de Dropbox, convertirla a link de descarga directa
+      if (video_path.includes("dropbox.com")) {
+        let directUrl = video_path
+          .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+          .replace("?dl=0", "?dl=1")
+          .replace("&dl=0", "&dl=1");
+        if (!directUrl.includes("dl=1")) directUrl += (directUrl.includes("?") ? "&" : "?") + "dl=1";
+        console.log("🌐 Descargando desde URL Dropbox directa:", directUrl);
+        await download(directUrl, videoPath);
+      } else {
+        console.log("📂 Descargando desde Dropbox API path:", video_path);
+        await downloadFromDropbox(video_path, videoPath, dropbox_token);
+      }
     } else if (video_url && video_url.trim() !== "") {
       console.log("🌐 Descargando desde URL:", video_url);
       await download(video_url, videoPath);
