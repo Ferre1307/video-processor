@@ -46,6 +46,19 @@ function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
       .replace(/[\r\n]+/g, " ")
       .replace(/"/g, "'")
       .replace(/[\x00-\x1F\x7F]/g, " ")
+      // Corregir pronunciación de palabras en español que edge-tts lee en inglés
+      .replace(/\bnote\b/gi, "nóte")
+      .replace(/\blink\b/gi, "enlace")
+      .replace(/\bfeed\b/gi, "perfil")
+      .replace(/\bstory\b/gi, "historia")
+      .replace(/\bstories\b/gi, "historias")
+      .replace(/\breels\b/gi, "riils")
+      .replace(/\blive\b/gi, "laiv")
+      .replace(/\bpost\b/gi, "póst")
+      .replace(/\bposts\b/gi, "pósts")
+      .replace(/\bnatural\b/gi, "naturál")
+      .replace(/\bvideo\b/gi, "bideo")
+      .replace(/\bvideos\b/gi, "bideos")
       .trim();
     const cmd = `edge-tts --voice "${voice}" --text "${cleanText}" --write-media "${audioPath}"`;
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
