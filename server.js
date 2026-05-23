@@ -12,6 +12,54 @@ app.use(express.urlencoded({ limit: "100mb", extended: true }));
 const TMP = "/tmp/videos";
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
 
+// ✅ Refresh token — obtiene access token fresco automáticamente
+let cachedToken = null;
+let tokenExpiry = 0;
+
+function getDropboxToken() {
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    if (cachedToken && now < tokenExpiry) return resolve(cachedToken);
+
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: process.env.DROPBOX_REFRESH_TOKEN,
+      client_id: process.env.DROPBOX_APP_KEY,
+      client_secret: process.env.DROPBOX_APP_SECRET,
+    }).toString();
+
+    const options = {
+      hostname: "api.dropbox.com",
+      path: "/oauth2/token",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.access_token) {
+            cachedToken = parsed.access_token;
+            tokenExpiry = now + (parsed.expires_in - 60) * 1000;
+            resolve(cachedToken);
+          } else {
+            reject("No se pudo obtener token: " + data);
+          }
+        } catch { reject(data); }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
@@ -286,22 +334,14 @@ app.post("/process-video", async (req, res) => {
   const musicPath = music_url ? path.join(TMP, `music_${id}.mp3`) : null;
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
+  // Obtener token fresco automáticamente
+  const freshToken = await getDropboxToken();
+
   try {
     console.log("📥 Descargando video...");
     if (video_path && video_path.trim() !== "") {
-      // Si es una URL de Dropbox, convertirla a link de descarga directa
-      if (video_path.includes("dropbox.com")) {
-        let directUrl = video_path
-          .replace("www.dropbox.com", "dl.dropboxusercontent.com")
-          .replace("?dl=0", "?dl=1")
-          .replace("&dl=0", "&dl=1");
-        if (!directUrl.includes("dl=1")) directUrl += (directUrl.includes("?") ? "&" : "?") + "dl=1";
-        console.log("🌐 Descargando desde URL Dropbox directa:", directUrl);
-        await download(directUrl, videoPath);
-      } else {
-        console.log("📂 Descargando desde Dropbox API path:", video_path);
-        await downloadFromDropbox(video_path, videoPath, dropbox_token);
-      }
+      console.log("📂 Descargando desde Dropbox API path:", video_path);
+      await downloadFromDropbox(video_path, videoPath, freshToken);
     } else if (video_url && video_url.trim() !== "") {
       console.log("🌐 Descargando desde URL:", video_url);
       await download(video_url, videoPath);
@@ -378,13 +418,13 @@ app.post("/process-video", async (req, res) => {
     console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
 
-    const finalOutputPath = await getUniqueDropboxPath(dropbox_output_path, dropbox_token);
+    const finalOutputPath = await getUniqueDropboxPath(dropbox_output_path, freshToken);
     console.log("📁 Guardando como:", finalOutputPath);
 
     console.log("☁️ Subiendo a Dropbox...");
-    await uploadToDropbox(outputPath, finalOutputPath, dropbox_token);
+    await uploadToDropbox(outputPath, finalOutputPath, freshToken);
 
-    const dropboxUrl = await getDropboxLink(finalOutputPath, dropbox_token);
+    const dropboxUrl = await getDropboxLink(finalOutputPath, freshToken);
 
     [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
