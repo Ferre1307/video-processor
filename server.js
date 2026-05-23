@@ -336,7 +336,7 @@ app.post("/process-video", async (req, res) => {
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = "ffmpeg -y" +
-        " -stream_loop -1 -i \"" + videoPath + "\"" +
+        " -stream_loop -1 -i \"" + videoPath + "\" -an" +
         " -i \"" + audioPath + "\"" +
         " -stream_loop -1 -i \"" + musicPath + "\"" +
         " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
@@ -350,7 +350,7 @@ app.post("/process-video", async (req, res) => {
         " \"" + outputPath + "\"";
     } else {
       ffmpegCmd = "ffmpeg -y" +
-        " -stream_loop -1 -i \"" + videoPath + "\"" +
+        " -stream_loop -1 -i \"" + videoPath + "\" -an" +
         " -i \"" + audioPath + "\"" +
         " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[aout]\"" +
         " -map 0:v:0" +
