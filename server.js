@@ -314,36 +314,32 @@ app.post("/process-video", async (req, res) => {
 
     const fadeFilter = buildFadeFilter(audioDuration, cut_interval, 0.3);
 
-    // ✅ FIX pantalla negra: -c:v hevc antes del -i fuerza decodificación correcta
+    // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = `ffmpeg -y \
-        -c:v hevc -stream_loop -1 -i "${videoPath}" \
+        -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
         -stream_loop -1 -i "${musicPath}" \
-        -filter_complex "\
-          [0:v]scale=720:1280,${fadeFilter}[vout];\
-          [1:a]volume=1.0[voice];\
-          [2:a]volume=0.25,atrim=0:${audioDuration}[music];\
-          [voice][music]amix=inputs=2:duration=first[aout]\
-        " \
-        -map "[vout]" -map "[aout]" \
+        -filter_complex "[2:a]volume=0.25,atrim=0:${audioDuration}[music];[1:a][music]amix=inputs=2:duration=longest[aout]" \
+        -map 0:v:0 \
+        -map "[aout]" \
+        -vf "scale=720:1280,format=yuv420p" \
         -t ${audioDuration} \
         -c:v libx264 -preset ultrafast -crf 28 \
         -c:a aac -b:a 96k \
-        -threads 1 \
         -shortest \
         "${outputPath}"`;
     } else {
       ffmpegCmd = `ffmpeg -y \
-        -c:v hevc -stream_loop -1 -i "${videoPath}" \
+        -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
-        -filter_complex "[0:v]scale=720:1280,${fadeFilter}[vout]" \
-        -map "[vout]" -map 1:a \
+        -map 0:v:0 \
+        -map 1:a:0 \
+        -vf "scale=720:1280,format=yuv420p" \
         -t ${audioDuration} \
         -c:v libx264 -preset ultrafast -crf 28 \
         -c:a aac -b:a 96k \
-        -threads 1 \
         -shortest \
         "${outputPath}"`;
     }
