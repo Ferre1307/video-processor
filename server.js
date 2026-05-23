@@ -380,19 +380,21 @@ app.post("/process-video", async (req, res) => {
     const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
     const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
 
-    // Gancho desde portada del Sheet
+    // Gancho desde portada del Sheet - texto completo dividido en lineas
     const ganchoRaw = (portada || text.split(' ').slice(0,6).join(' '))
       .replace(/[\r\n]+/g, ' ').trim()
-      .replace(/'/g, '').replace(/[^\w\u00C0-\u024F.,!? ]/g, '');
+      .replace(/'/g, '');
     const ganchoWords = ganchoRaw.split(' ');
-    const line1 = ganchoWords.slice(0, 3).join(' ');
-    const line2 = ganchoWords.slice(3, 6).join(' ');
-    const line3 = ganchoWords.slice(6, 9).join(' ');
+    const totalWords = ganchoWords.length;
+    const wordsPerLine = Math.ceil(totalWords / 3);
+    const line1 = ganchoWords.slice(0, wordsPerLine).join(' ');
+    const line2 = ganchoWords.slice(wordsPerLine, wordsPerLine * 2).join(' ');
+    const line3 = ganchoWords.slice(wordsPerLine * 2).join(' ');
     const fontfile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-    const dt1 = "drawtext=text='" + line1 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'";
-    const dt2 = "drawtext=text='" + line2 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'";
-    const dt3 = "drawtext=text='" + line3 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'";
-    const drawtext = dt1 + ',' + dt2 + ',' + dt3
+    const dt1 = line1 ? "drawtext=text='" + line1 + "':fontsize=44:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=18:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'" : '';
+    const dt2 = line2 ? "drawtext=text='" + line2 + "':fontsize=44:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=18:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'" : '';
+    const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=44:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=18:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
+    const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn + "," + drawtext;
 
     console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
