@@ -6,7 +6,8 @@ const https = require("https");
 const http = require("http");
 
 const app = express();
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
 const TMP = "/tmp/videos";
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
@@ -40,7 +41,13 @@ function run(cmd) {
 
 function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   return new Promise((resolve, reject) => {
-    const cmd = `edge-tts --voice "${voice}" --text "${text.replace(/"/g, "'")}" --write-media "${audioPath}"`;
+    // Limpiar texto: eliminar saltos de línea y caracteres especiales
+    const cleanText = text
+      .replace(/[\r\n]+/g, " ")
+      .replace(/"/g, "'")
+      .replace(/[\x00-\x1F\x7F]/g, " ")
+      .trim();
+    const cmd = `edge-tts --voice "${voice}" --text "${cleanText}" --write-media "${audioPath}"`;
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
       if (err) return reject(stderr || err.message);
       resolve(audioPath);
