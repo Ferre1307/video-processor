@@ -312,37 +312,57 @@ app.post("/process-video", async (req, res) => {
     const audioDuration = parseFloat(durationOut.trim()) + 0.5;
     console.log(`⏱️ Duración: ${audioDuration}s`);
 
-    const fadeFilter = buildFadeFilter(audioDuration, cut_interval, 0.3);
+    // Efectos aleatorios por video
+    const speeds = [0.85, 0.9, 1.0, 1.1, 1.15];
+    const speed = speeds[Math.floor(Math.random() * speeds.length)];
+
+    const colorFilters = [
+      "eq=brightness=0.02:contrast=1.05:saturation=1.1",
+      "eq=brightness=-0.02:contrast=1.08:saturation=0.95",
+      "eq=brightness=0.04:contrast=1.0:saturation=1.2",
+      "eq=brightness=0:contrast=1.1:saturation=1.05",
+      "eq=brightness=-0.03:contrast=1.03:saturation=1.15",
+    ];
+    const colorFilter = colorFilters[Math.floor(Math.random() * colorFilters.length)];
+
+    const fadeIn = "fade=t=in:st=0:d=0.4";
+    const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
+    const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
+    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn;
+
+    console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
 
     // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
     let ffmpegCmd;
     if (music_url && musicPath) {
-      ffmpegCmd = `ffmpeg -y \
-        -stream_loop -1 -i "${videoPath}" \
-        -i "${audioPath}" \
-        -stream_loop -1 -i "${musicPath}" \
-        -filter_complex "[2:a]volume=0.25,atrim=0:${audioDuration}[music];[1:a][music]amix=inputs=2:duration=longest[aout]" \
-        -map 0:v:0 \
-        -map "[aout]" \
-        -vf "scale=720:1280,format=yuv420p" \
-        -t ${audioDuration} \
-        -c:v libx264 -preset ultrafast -crf 28 \
-        -c:a aac -b:a 96k \
-        -shortest \
-        "${outputPath}"`;
+      ffmpegCmd = "ffmpeg -y" +
+        " -stream_loop -1 -i \"" + videoPath + "\"" +
+        " -i \"" + audioPath + "\"" +
+        " -stream_loop -1 -i \"" + musicPath + "\"" +
+        " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
+        " -map 0:v:0" +
+        " -map \"[aout]\"" +
+        " -vf \"" + vfFilter + "\"" +
+        " -t " + audioDuration +
+        " -c:v libx264 -preset ultrafast -crf 28" +
+        " -c:a aac -b:a 96k" +
+        " -shortest" +
+        " \"" + outputPath + "\"";
     } else {
-      ffmpegCmd = `ffmpeg -y \
-        -stream_loop -1 -i "${videoPath}" \
-        -i "${audioPath}" \
-        -map 0:v:0 \
-        -map 1:a:0 \
-        -vf "scale=720:1280,format=yuv420p" \
-        -t ${audioDuration} \
-        -c:v libx264 -preset ultrafast -crf 28 \
-        -c:a aac -b:a 96k \
-        -shortest \
-        "${outputPath}"`;
+      ffmpegCmd = "ffmpeg -y" +
+        " -stream_loop -1 -i \"" + videoPath + "\"" +
+        " -i \"" + audioPath + "\"" +
+        " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[aout]\"" +
+        " -map 0:v:0" +
+        " -map \"[aout]\"" +
+        " -vf \"" + vfFilter + "\"" +
+        " -t " + audioDuration +
+        " -c:v libx264 -preset ultrafast -crf 28" +
+        " -c:a aac -b:a 96k" +
+        " -shortest" +
+        " \"" + outputPath + "\"";
     }
+
 
     console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
