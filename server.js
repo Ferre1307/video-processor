@@ -47,7 +47,7 @@ function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
       .replace(/"/g, "'")
       .replace(/[\x00-\x1F\x7F]/g, " ")
       .trim();
-    const cmd = `edge-tts --voice "${voice}" --lang "es-PY" --text "${cleanText}" --write-media "${audioPath}"`;
+    const cmd = `edge-tts --voice "${voice}" --text "${cleanText}" --write-media "${audioPath}"`;
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
       if (err) return reject(stderr || err.message);
       resolve(audioPath);
