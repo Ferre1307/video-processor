@@ -322,6 +322,7 @@ app.post("/process-video", async (req, res) => {
     cut_interval = 10,
     dropbox_token,
     dropbox_output_path,
+    portada,
   } = req.body;
 
   if ((!video_url && !video_path) || !text || !dropbox_output_path) {
@@ -379,12 +380,14 @@ app.post("/process-video", async (req, res) => {
     const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
     const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
 
-    // Gancho: 3 lineas de 3 palabras
-    const words = text.replace(/[\r\n]+/g, ' ').trim().split(' ');
-    const clean = (w) => w.replace(/'/g, '').replace(/[^\w\u00C0-\u024F.,!? ]/g, '');
-    const line1 = words.slice(0, 3).map(clean).join(' ');
-    const line2 = words.slice(3, 6).map(clean).join(' ');
-    const line3 = words.slice(6, 9).map(clean).join(' ');
+    // Gancho desde portada del Sheet
+    const ganchoRaw = (portada || text.split(' ').slice(0,6).join(' '))
+      .replace(/[\r\n]+/g, ' ').trim()
+      .replace(/'/g, '').replace(/[^\w\u00C0-\u024F.,!? ]/g, '');
+    const ganchoWords = ganchoRaw.split(' ');
+    const line1 = ganchoWords.slice(0, 3).join(' ');
+    const line2 = ganchoWords.slice(3, 6).join(' ');
+    const line3 = ganchoWords.slice(6, 9).join(' ');
     const fontfile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
     const dt1 = "drawtext=text='" + line1 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'";
     const dt2 = "drawtext=text='" + line2 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'";
