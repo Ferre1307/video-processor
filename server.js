@@ -379,16 +379,17 @@ app.post("/process-video", async (req, res) => {
     const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
     const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
 
-    // Gancho: primeras 8 palabras del guión, mostradas 3 segundos al inicio
-    const ganchoText = text.replace(/[\r\n]+/g, " ").trim()
-      .split(" ").slice(0, 8).join(" ")
-      .replace(/'/g, "").replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ¿¡ .,!?]/g, "");
-    const drawtext = "drawtext=text='" + ganchoText + "'" +
-      ":fontsize=42:fontcolor=black:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" +
-      ":box=1:boxcolor=white@0.85:boxborderw=18" +
-      ":x=(w-text_w)/2:y=(h-text_h)/2" +
-      ":enable='between(t,0,3)'";
-
+    // Gancho: 3 lineas de 3 palabras
+    const words = text.replace(/[\r\n]+/g, ' ').trim().split(' ');
+    const clean = (w) => w.replace(/'/g, '').replace(/[^\w\u00C0-\u024F.,!? ]/g, '');
+    const line1 = words.slice(0, 3).map(clean).join(' ');
+    const line2 = words.slice(3, 6).map(clean).join(' ');
+    const line3 = words.slice(6, 9).map(clean).join(' ');
+    const fontfile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    const dt1 = "drawtext=text='" + line1 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'";
+    const dt2 = "drawtext=text='" + line2 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'";
+    const dt3 = "drawtext=text='" + line3 + "':fontsize=48:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=20:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'";
+    const drawtext = dt1 + ',' + dt2 + ',' + dt3
     const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn + "," + drawtext;
 
     console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
