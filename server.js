@@ -101,17 +101,54 @@ function getDropboxLink(dropboxPath, token) {
       res.on("end", () => {
         try {
           const parsed = JSON.parse(data);
-          const url = parsed.url ||
-            (parsed.error && parsed.error[".tag"] === "shared_link_already_exists"
-              ? parsed.error.metadata.url
-              : null);
-          if (url) {
-            const directUrl = url
+          // Link creado exitosamente
+          if (parsed.url) {
+            const directUrl = parsed.url
+              .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+              .replace("?dl=0", "");
+            return resolve(directUrl);
+          }
+          // Link ya existe — obtener el link existente
+          if (parsed.error && parsed.error[".tag"] === "shared_link_already_exists") {
+            console.log("Link ya existe, obteniendo link existente...");
+            return getExistingDropboxLink(dropboxPath, token).then(resolve).catch(reject);
+          }
+          reject(JSON.stringify(parsed));
+        } catch { reject(data); }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function getExistingDropboxLink(dropboxPath, token) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ path: dropboxPath });
+    const options = {
+      hostname: "api.dropboxapi.com",
+      path: "/2/sharing/list_shared_links",
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.links && parsed.links.length > 0) {
+            const directUrl = parsed.links[0].url
               .replace("www.dropbox.com", "dl.dropboxusercontent.com")
               .replace("?dl=0", "");
             resolve(directUrl);
           } else {
-            reject(JSON.stringify(parsed));
+            reject("No se encontro link existente");
           }
         } catch { reject(data); }
       });
