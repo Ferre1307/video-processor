@@ -29,7 +29,7 @@ function getDropboxToken() {
     }).toString();
 
     const options = {
-      hostname: "api.dropbox.com",
+      hostname: "api.dropboxapi.com",
       path: "/oauth2/token",
       method: "POST",
       headers: {
