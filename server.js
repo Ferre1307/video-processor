@@ -378,7 +378,18 @@ app.post("/process-video", async (req, res) => {
     const fadeIn = "fade=t=in:st=0:d=0.4";
     const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
     const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
-    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn;
+
+    // Gancho: primeras 8 palabras del guión, mostradas 3 segundos al inicio
+    const ganchoText = text.replace(/[\r\n]+/g, " ").trim()
+      .split(" ").slice(0, 8).join(" ")
+      .replace(/'/g, "").replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ¿¡ .,!?]/g, "");
+    const drawtext = "drawtext=text='" + ganchoText + "'" +
+      ":fontsize=42:fontcolor=black:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" +
+      ":box=1:boxcolor=white@0.85:boxborderw=18" +
+      ":x=(w-text_w)/2:y=(h-text_h)/2" +
+      ":enable='between(t,0,3)'";
+
+    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn + "," + drawtext;
 
     console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
 
