@@ -295,8 +295,17 @@ app.post("/process-video", async (req, res) => {
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
   try {
+    // 1. Descargar video base
     console.log("📥 Descargando video...");
-    await download(video_url, videoPath);
+    if (video_path && video_path.trim() !== "") {
+      console.log("📂 Descargando desde Dropbox path:", video_path);
+      await downloadFromDropbox(video_path, videoPath, dropbox_token);
+    } else if (video_url && video_url.trim() !== "") {
+      console.log("🌐 Descargando desde URL:", video_url);
+      await download(video_url, videoPath);
+    } else {
+      throw new Error("Se requiere video_path o video_url");
+    }
 
     console.log("🎙️ Generando voz en off...");
     await generateVoice(text, audioPath, voice);
