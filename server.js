@@ -194,7 +194,7 @@ app.post("/process-video", async (req, res) => {
         -filter_complex "\
           [0:v]scale=720:1280,${fadeFilter}[vout];\
           [1:a]volume=1.0[voice];\
-          [2:a]volume=0.12,atrim=0:${audioDuration}[music];\
+          [2:a]volume=0.25,atrim=0:${audioDuration}[music];\
           [voice][music]amix=inputs=2:duration=first[aout]\
         " \
         -map "[vout]" -map "[aout]" \
