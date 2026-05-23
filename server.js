@@ -30,6 +30,33 @@ function download(url, dest) {
   });
 }
 
+// Descarga archivo desde Dropbox usando el token (sin URLs que expiren)
+function downloadFromDropbox(dropboxPath, dest, token) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ path: dropboxPath });
+    const options = {
+      hostname: "content.dropboxapi.com",
+      path: "/2/files/download",
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Dropbox-API-Arg": JSON.stringify({ path: dropboxPath }),
+        "Content-Type": "text/plain",
+      },
+    };
+    const file = fs.createWriteStream(dest);
+    const req = https.request(options, (res) => {
+      res.pipe(file);
+      file.on("finish", () => file.close(resolve));
+    });
+    req.on("error", (err) => {
+      fs.unlink(dest, () => {});
+      reject(err);
+    });
+    req.end();
+  });
+}
+
 function run(cmd) {
   return new Promise((resolve, reject) => {
     exec(cmd, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
@@ -248,6 +275,7 @@ function buildFadeFilter(audioDuration, cutInterval = 10, fadeDuration = 0.3) {
 app.post("/process-video", async (req, res) => {
   const {
     video_url,
+    video_path,
     text,
     voice = "es-PY-TaniaNeural",
     music_url,
@@ -256,8 +284,8 @@ app.post("/process-video", async (req, res) => {
     dropbox_output_path,
   } = req.body;
 
-  if (!video_url || !text || !dropbox_token || !dropbox_output_path) {
-    return res.status(400).json({ error: "Faltan parámetros: video_url, text, dropbox_token, dropbox_output_path" });
+  if ((!video_url && !video_path) || !text || !dropbox_token || !dropbox_output_path) {
+    return res.status(400).json({ error: "Faltan parámetros: video_url o video_path, text, dropbox_token, dropbox_output_path" });
   }
 
   const id = Date.now() + "_" + Math.random().toString(36).slice(2);
