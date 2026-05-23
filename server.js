@@ -33,7 +33,6 @@ function download(url, dest) {
 // Descarga archivo desde Dropbox usando el token (sin URLs que expiren)
 function downloadFromDropbox(dropboxPath, dest, token) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ path: dropboxPath });
     const options = {
       hostname: "content.dropboxapi.com",
       path: "/2/files/download",
@@ -68,12 +67,10 @@ function run(cmd) {
 
 function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   return new Promise((resolve, reject) => {
-    // Limpiar texto: eliminar saltos de línea y caracteres especiales
     const cleanText = text
       .replace(/[\r\n]+/g, " ")
       .replace(/"/g, "'")
       .replace(/[\x00-\x1F\x7F]/g, " ")
-      // Corregir pronunciación de palabras en español que edge-tts lee en inglés
       .replace(/\bnote\b/gi, "nóte")
       .replace(/\blink\b/gi, "enlace")
       .replace(/\bfeed\b/gi, "perfil")
@@ -148,14 +145,12 @@ function getDropboxLink(dropboxPath, token) {
       res.on("end", () => {
         try {
           const parsed = JSON.parse(data);
-          // Link creado exitosamente
           if (parsed.url) {
             const directUrl = parsed.url
               .replace("www.dropbox.com", "dl.dropboxusercontent.com")
               .replace("?dl=0", "");
             return resolve(directUrl);
           }
-          // Link ya existe — obtener el link existente
           if (parsed.error && parsed.error[".tag"] === "shared_link_already_exists") {
             console.log("Link ya existe, obteniendo link existente...");
             return getExistingDropboxLink(dropboxPath, token).then(resolve).catch(reject);
@@ -206,7 +201,6 @@ function getExistingDropboxLink(dropboxPath, token) {
   });
 }
 
-// Genera un nombre único si el archivo ya existe en Dropbox
 function getUniqueDropboxPath(dropboxPath, token) {
   return new Promise((resolve) => {
     const checkExists = (filePath, counter) => {
@@ -229,10 +223,8 @@ function getUniqueDropboxPath(dropboxPath, token) {
             const parsed = JSON.parse(data);
             if (parsed.error && parsed.error[".tag"] === "path" &&
                 parsed.error.path[".tag"] === "not_found") {
-              // Archivo no existe, usar este nombre
               resolve(filePath);
             } else {
-              // Archivo existe, generar nuevo nombre
               const ext = path.extname(dropboxPath);
               const base = dropboxPath.slice(0, -ext.length);
               const newPath = `${base}_${counter}${ext}`;
@@ -295,7 +287,6 @@ app.post("/process-video", async (req, res) => {
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
   try {
-    // 1. Descargar video base
     console.log("📥 Descargando video...");
     if (video_path && video_path.trim() !== "") {
       console.log("📂 Descargando desde Dropbox path:", video_path);
@@ -323,15 +314,16 @@ app.post("/process-video", async (req, res) => {
 
     const fadeFilter = buildFadeFilter(audioDuration, cut_interval, 0.3);
 
-    // ✅ Usando preset ultrafast y escala 720p para reducir RAM
+    // ✅ FIX pantalla negra: format=yuv420p fuerza conversión desde HEVC
+    // ✅ FIX stream loop HEVC: -fflags +genpts
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = `ffmpeg -y \
-        -stream_loop -1 -i "${videoPath}" \
+        -fflags +genpts -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
         -stream_loop -1 -i "${musicPath}" \
         -filter_complex "\
-          [0:v]scale=720:1280,${fadeFilter}[vout];\
+          [0:v]format=yuv420p,scale=720:1280,${fadeFilter}[vout];\
           [1:a]volume=1.0[voice];\
           [2:a]volume=0.25,atrim=0:${audioDuration}[music];\
           [voice][music]amix=inputs=2:duration=first[aout]\
@@ -345,9 +337,9 @@ app.post("/process-video", async (req, res) => {
         "${outputPath}"`;
     } else {
       ffmpegCmd = `ffmpeg -y \
-        -stream_loop -1 -i "${videoPath}" \
+        -fflags +genpts -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
-        -filter_complex "[0:v]scale=720:1280,${fadeFilter}[vout]" \
+        -filter_complex "[0:v]format=yuv420p,scale=720:1280,${fadeFilter}[vout]" \
         -map "[vout]" -map 1:a \
         -t ${audioDuration} \
         -c:v libx264 -preset ultrafast -crf 28 \
@@ -360,7 +352,6 @@ app.post("/process-video", async (req, res) => {
     console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
 
-    // Generar nombre único si ya existe
     const finalOutputPath = await getUniqueDropboxPath(dropbox_output_path, dropbox_token);
     console.log("📁 Guardando como:", finalOutputPath);
 
