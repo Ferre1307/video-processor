@@ -11,8 +11,6 @@ app.use(express.json({ limit: "50mb" }));
 const TMP = "/tmp/videos";
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
@@ -40,7 +38,6 @@ function run(cmd) {
   });
 }
 
-// Genera voz con edge-tts (Microsoft TTS - completamente gratis)
 function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   return new Promise((resolve, reject) => {
     const cmd = `edge-tts --voice "${voice}" --text "${text.replace(/"/g, "'")}" --write-media "${audioPath}"`;
@@ -125,21 +122,14 @@ function getDropboxLink(dropboxPath, token) {
   });
 }
 
-// ─── Construir filtro FFmpeg con cortes cada 10s y fade to black ─────────────
-
 function buildFadeFilter(audioDuration, cutInterval = 10, fadeDuration = 0.3) {
-  // Genera puntos de corte cada cutInterval segundos
   const cuts = [];
   for (let t = cutInterval; t < audioDuration; t += cutInterval) {
     cuts.push(t);
   }
-
   if (cuts.length === 0) {
-    // Video corto, sin cortes — solo fade in al inicio y fade out al final
     return `fade=t=in:st=0:d=${fadeDuration},fade=t=out:st=${Math.max(0, audioDuration - fadeDuration)}:d=${fadeDuration}`;
   }
-
-  // Construir filtro con fade out antes de cada corte y fade in después
   let filter = `fade=t=in:st=0:d=${fadeDuration}`;
   for (const cut of cuts) {
     const fadeOutStart = cut - fadeDuration;
@@ -149,27 +139,10 @@ function buildFadeFilter(audioDuration, cutInterval = 10, fadeDuration = 0.3) {
       filter += `,fade=t=in:st=${fadeInStart.toFixed(2)}:d=${fadeDuration}`;
     }
   }
-  // Fade out final
   filter += `,fade=t=out:st=${Math.max(0, audioDuration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-
   return filter;
 }
 
-// ─── Ruta principal ───────────────────────────────────────────────────────────
-
-/**
- * POST /process-video
- * Body:
- * {
- *   video_url: "https://dl.dropboxusercontent.com/.../video.mp4",
- *   text: "Texto del guión para la voz en off",
- *   voice: "es-PY-TaniaNeural",  (opcional)
- *   music_url: "https://dl.dropboxusercontent.com/.../music.mp3",  (opcional)
- *   cut_interval: 10,  (opcional, segundos entre cortes, default 10)
- *   dropbox_token: "tu_token_dropbox",
- *   dropbox_output_path: "/Videos-Procesados/video_par1_vid1.mp4"
- * }
- */
 app.post("/process-video", async (req, res) => {
   const {
     video_url,
@@ -192,31 +165,26 @@ app.post("/process-video", async (req, res) => {
   const outputPath = path.join(TMP, `output_${id}.mp4`);
 
   try {
-    // 1. Descargar video base
     console.log("📥 Descargando video...");
     await download(video_url, videoPath);
 
-    // 2. Generar voz en off con edge-tts
-    console.log("🎙️ Generando voz en off con Microsoft TTS...");
+    console.log("🎙️ Generando voz en off...");
     await generateVoice(text, audioPath, voice);
 
-    // 3. Descargar música de fondo
     if (music_url && musicPath) {
-      console.log("🎵 Descargando música de fondo...");
+      console.log("🎵 Descargando música...");
       await download(music_url, musicPath);
     }
 
-    // 4. Obtener duración del audio
     const durationOut = await run(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
     );
     const audioDuration = parseFloat(durationOut.trim()) + 0.5;
-    console.log(`⏱️ Duración del audio: ${audioDuration}s`);
+    console.log(`⏱️ Duración: ${audioDuration}s`);
 
-    // 5. Construir filtro de fade to black cada cut_interval segundos
     const fadeFilter = buildFadeFilter(audioDuration, cut_interval, 0.3);
 
-    // 6. Construir comando FFmpeg
+    // ✅ Usando preset ultrafast y escala 720p para reducir RAM
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = `ffmpeg -y \
@@ -224,41 +192,40 @@ app.post("/process-video", async (req, res) => {
         -i "${audioPath}" \
         -stream_loop -1 -i "${musicPath}" \
         -filter_complex "\
-          [0:v]${fadeFilter}[vout];\
+          [0:v]scale=720:1280,${fadeFilter}[vout];\
           [1:a]volume=1.0[voice];\
           [2:a]volume=0.12,atrim=0:${audioDuration}[music];\
           [voice][music]amix=inputs=2:duration=first[aout]\
         " \
         -map "[vout]" -map "[aout]" \
         -t ${audioDuration} \
-        -c:v libx264 -preset fast -crf 23 \
-        -c:a aac -b:a 128k \
+        -c:v libx264 -preset ultrafast -crf 28 \
+        -c:a aac -b:a 96k \
+        -threads 1 \
         -shortest \
         "${outputPath}"`;
     } else {
       ffmpegCmd = `ffmpeg -y \
         -stream_loop -1 -i "${videoPath}" \
         -i "${audioPath}" \
-        -vf "${fadeFilter}" \
-        -map 0:v -map 1:a \
+        -filter_complex "[0:v]scale=720:1280,${fadeFilter}[vout]" \
+        -map "[vout]" -map 1:a \
         -t ${audioDuration} \
-        -c:v libx264 -preset fast -crf 23 \
-        -c:a aac -b:a 128k \
+        -c:v libx264 -preset ultrafast -crf 28 \
+        -c:a aac -b:a 96k \
+        -threads 1 \
         -shortest \
         "${outputPath}"`;
     }
 
-    console.log("🎬 Procesando video con FFmpeg...");
+    console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
 
-    // 7. Subir a Dropbox
     console.log("☁️ Subiendo a Dropbox...");
     await uploadToDropbox(outputPath, dropbox_output_path, dropbox_token);
 
-    // 8. Obtener link público
     const dropboxUrl = await getDropboxLink(dropbox_output_path, dropbox_token);
 
-    // 9. Limpiar temporales
     [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
@@ -275,13 +242,13 @@ app.post("/process-video", async (req, res) => {
   }
 });
 
-// Health check
 app.get("/", (req, res) => res.json({
   status: "ok",
-  message: "Video server running",
-  tts: "Microsoft Edge TTS (gratis)",
-  effects: "Fade to black cada 10s"
+  message: "Video server running - modo bajo RAM",
+  resolucion: "720x1280",
+  preset: "ultrafast",
+  tts: "Microsoft Edge TTS (gratis)"
 }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
