@@ -383,7 +383,8 @@ app.post("/process-video", async (req, res) => {
     // Gancho desde portada del Sheet - texto completo dividido en lineas
     const ganchoRaw = (portada || text.split(' ').slice(0,6).join(' '))
       .replace(/[\r\n]+/g, ' ').trim()
-      .replace(/'/g, '');
+      .replace(/'/g, '')
+      .replace(/[{}\[\]\\:=@#%&*<>|;"]/g, '');
     const ganchoWords = ganchoRaw.split(' ');
     const totalWords = ganchoWords.length;
     const wordsPerLine = Math.ceil(totalWords / 3);
