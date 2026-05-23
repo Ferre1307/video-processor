@@ -137,7 +137,7 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   const segments = [];
   let current = "";
   for (const s of sentences) {
-    if ((current + s).length > 500) {
+    if ((current + s).length > 1000) {
       if (current) segments.push(current.trim());
       current = s;
     } else {
