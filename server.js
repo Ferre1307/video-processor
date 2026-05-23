@@ -159,6 +159,51 @@ function getExistingDropboxLink(dropboxPath, token) {
   });
 }
 
+// Genera un nombre único si el archivo ya existe en Dropbox
+function getUniqueDropboxPath(dropboxPath, token) {
+  return new Promise((resolve) => {
+    const checkExists = (filePath, counter) => {
+      const body = JSON.stringify({ path: filePath });
+      const options = {
+        hostname: "api.dropboxapi.com",
+        path: "/2/files/get_metadata",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      };
+      const req = https.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error && parsed.error[".tag"] === "path" &&
+                parsed.error.path[".tag"] === "not_found") {
+              // Archivo no existe, usar este nombre
+              resolve(filePath);
+            } else {
+              // Archivo existe, generar nuevo nombre
+              const ext = path.extname(dropboxPath);
+              const base = dropboxPath.slice(0, -ext.length);
+              const newPath = `${base}_${counter}${ext}`;
+              checkExists(newPath, counter + 1);
+            }
+          } catch {
+            resolve(filePath);
+          }
+        });
+      });
+      req.on("error", () => resolve(filePath));
+      req.write(body);
+      req.end();
+    };
+    checkExists(dropboxPath, 1);
+  });
+}
+
 function buildFadeFilter(audioDuration, cutInterval = 10, fadeDuration = 0.3) {
   const cuts = [];
   for (let t = cutInterval; t < audioDuration; t += cutInterval) {
@@ -258,10 +303,14 @@ app.post("/process-video", async (req, res) => {
     console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
 
-    console.log("☁️ Subiendo a Dropbox...");
-    await uploadToDropbox(outputPath, dropbox_output_path, dropbox_token);
+    // Generar nombre único si ya existe
+    const finalOutputPath = await getUniqueDropboxPath(dropbox_output_path, dropbox_token);
+    console.log("📁 Guardando como:", finalOutputPath);
 
-    const dropboxUrl = await getDropboxLink(dropbox_output_path, dropbox_token);
+    console.log("☁️ Subiendo a Dropbox...");
+    await uploadToDropbox(outputPath, finalOutputPath, dropbox_token);
+
+    const dropboxUrl = await getDropboxLink(finalOutputPath, dropbox_token);
 
     [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
