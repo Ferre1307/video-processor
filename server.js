@@ -306,6 +306,11 @@ app.post("/process-video", async (req, res) => {
       await download(music_url, musicPath);
     }
 
+    // ✅ FIX pantalla negra: pre-convertir HEVC a H264 antes de procesar
+    const convertedPath = path.join(TMP, `converted_${id}.mp4`);
+    console.log("🔄 Pre-convirtiendo video HEVC a H264...");
+    await run(`ffmpeg -y -i "${videoPath}" -c:v libx264 -preset ultrafast -crf 28 -c:a copy "${convertedPath}"`);
+
     const durationOut = await run(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
     );
@@ -314,16 +319,14 @@ app.post("/process-video", async (req, res) => {
 
     const fadeFilter = buildFadeFilter(audioDuration, cut_interval, 0.3);
 
-    // ✅ FIX pantalla negra: format=yuv420p fuerza conversión desde HEVC
-    // ✅ FIX stream loop HEVC: -fflags +genpts
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = `ffmpeg -y \
-        -fflags +genpts -stream_loop -1 -i "${videoPath}" \
+        -stream_loop -1 -i "${convertedPath}" \
         -i "${audioPath}" \
         -stream_loop -1 -i "${musicPath}" \
         -filter_complex "\
-          [0:v]format=yuv420p,scale=720:1280,${fadeFilter}[vout];\
+          [0:v]scale=720:1280,${fadeFilter}[vout];\
           [1:a]volume=1.0[voice];\
           [2:a]volume=0.25,atrim=0:${audioDuration}[music];\
           [voice][music]amix=inputs=2:duration=first[aout]\
@@ -337,9 +340,9 @@ app.post("/process-video", async (req, res) => {
         "${outputPath}"`;
     } else {
       ffmpegCmd = `ffmpeg -y \
-        -fflags +genpts -stream_loop -1 -i "${videoPath}" \
+        -stream_loop -1 -i "${convertedPath}" \
         -i "${audioPath}" \
-        -filter_complex "[0:v]format=yuv420p,scale=720:1280,${fadeFilter}[vout]" \
+        -filter_complex "[0:v]scale=720:1280,${fadeFilter}[vout]" \
         -map "[vout]" -map 1:a \
         -t ${audioDuration} \
         -c:v libx264 -preset ultrafast -crf 28 \
@@ -360,7 +363,7 @@ app.post("/process-video", async (req, res) => {
 
     const dropboxUrl = await getDropboxLink(finalOutputPath, dropbox_token);
 
-    [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
+    [videoPath, convertedPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
 
@@ -369,7 +372,7 @@ app.post("/process-video", async (req, res) => {
 
   } catch (err) {
     console.error("❌ Error:", err);
-    [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
+    [videoPath, convertedPath, audioPath, musicPath, outputPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
     res.status(500).json({ error: err.toString() });
