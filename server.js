@@ -391,9 +391,9 @@ app.post("/process-video", async (req, res) => {
     const line2 = ganchoWords.slice(wordsPerLine, wordsPerLine * 2).join(' ');
     const line3 = ganchoWords.slice(wordsPerLine * 2).join(' ');
     const fontfile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-    const dt1 = line1 ? "drawtext=text='" + line1 + "':fontsize=36:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'" : '';
-    const dt2 = line2 ? "drawtext=text='" + line2 + "':fontsize=36:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'" : '';
-    const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=36:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
+    const dt1 = line1 ? "drawtext=text='" + line1 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'" : '';
+    const dt2 = line2 ? "drawtext=text='" + line2 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'" : '';
+    const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn + "," + drawtext;
 
