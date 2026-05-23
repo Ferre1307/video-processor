@@ -113,31 +113,81 @@ function run(cmd) {
   });
 }
 
-function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
-  return new Promise((resolve, reject) => {
-    const cleanText = text
-      .replace(/[\r\n]+/g, " ")
-      .replace(/"/g, "'")
-      .replace(/[\x00-\x1F\x7F]/g, " ")
-      .replace(/\bnote\b/gi, "nóte")
-      .replace(/\blink\b/gi, "enlace")
-      .replace(/\bfeed\b/gi, "perfil")
-      .replace(/\bstory\b/gi, "historia")
-      .replace(/\bstories\b/gi, "historias")
-      .replace(/\breels\b/gi, "riils")
-      .replace(/\blive\b/gi, "laiv")
-      .replace(/\bpost\b/gi, "póst")
-      .replace(/\bposts\b/gi, "pósts")
-      .replace(/\bnatural\b/gi, "naturál")
-      .replace(/\bvideo\b/gi, "bideo")
-      .replace(/\bvideos\b/gi, "bideos")
-      .trim();
-    const cmd = `edge-tts --voice "${voice}" --text "${cleanText}" --write-media "${audioPath}"`;
-    exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve(audioPath);
+async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
+  const cleanText = text
+    .replace(/[\r\n]+/g, " ")
+    .replace(/"/g, "'")
+    .replace(/[\x00-\x1F\x7F]/g, " ")
+    .replace(/\bnote\b/gi, "nóte")
+    .replace(/\blink\b/gi, "enlace")
+    .replace(/\bfeed\b/gi, "perfil")
+    .replace(/\bstory\b/gi, "historia")
+    .replace(/\bstories\b/gi, "historias")
+    .replace(/\breels\b/gi, "riils")
+    .replace(/\blive\b/gi, "laiv")
+    .replace(/\bpost\b/gi, "póst")
+    .replace(/\bposts\b/gi, "pósts")
+    .replace(/\bnatural\b/gi, "naturál")
+    .replace(/\bvideo\b/gi, "bideo")
+    .replace(/\bvideos\b/gi, "bideos")
+    .trim();
+
+  // Dividir en segmentos de 500 caracteres por oracion
+  const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+  const segments = [];
+  let current = "";
+  for (const s of sentences) {
+    if ((current + s).length > 500) {
+      if (current) segments.push(current.trim());
+      current = s;
+    } else {
+      current += " " + s;
+    }
+  }
+  if (current.trim()) segments.push(current.trim());
+
+  if (segments.length === 1) {
+    // Un solo segmento — comportamiento original
+    return new Promise((resolve, reject) => {
+      const cmd = `edge-tts --voice "${voice}" --text "${segments[0]}" --write-media "${audioPath}"`;
+      exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+        if (err) return reject(stderr || err.message);
+        resolve(audioPath);
+      });
     });
+  }
+
+  // Múltiples segmentos — generar y concatenar con ffmpeg
+  const tmpDir = path.dirname(audioPath);
+  const segFiles = [];
+  for (let i = 0; i < segments.length; i++) {
+    const segPath = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
+    segFiles.push(segPath);
+    await new Promise((resolve, reject) => {
+      const cmd = `edge-tts --voice "${voice}" --text "${segments[i]}" --write-media "${segPath}"`;
+      exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+        if (err) return reject(stderr || err.message);
+        resolve();
+      });
+    });
+  }
+
+  // Concatenar segmentos con ffmpeg
+  const listFile = path.join(tmpDir, `list_${Date.now()}.txt`);
+  fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
+  await new Promise((resolve, reject) => {
+    exec(`ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${audioPath}"`,
+      { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+        if (err) return reject(stderr || err.message);
+        resolve();
+      });
   });
+
+  // Limpiar archivos temporales
+  segFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+  try { fs.unlinkSync(listFile); } catch {}
+
+  return audioPath;
 }
 
 function uploadToDropbox(filePath, dropboxPath, token) {
