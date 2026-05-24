@@ -139,10 +139,18 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
 
   // Dividir en 2 mitades por oraciones
   const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-  const mid = Math.ceil(sentences.length / 2);
-  const part1 = sentences.slice(0, mid).join(" ").trim();
-  const part2 = sentences.slice(mid).join(" ").trim();
-  const parts = part2 ? [part1, part2] : [part1];
+  // Dividir en segmentos de max 400 caracteres
+  const parts = [];
+  let current = "";
+  for (const s of sentences) {
+    if ((current + " " + s).trim().length > 400) {
+      if (current.trim()) parts.push(current.trim());
+      current = s;
+    } else {
+      current = (current + " " + s).trim();
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
 
   const tmpDir = path.dirname(audioPath);
   const segFiles = [];
