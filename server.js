@@ -130,6 +130,11 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     .replace(/\bnatural\b/gi, "naturál")
     .replace(/\bvideo\b/gi, "bideo")
     .replace(/\bvideos\b/gi, "bideos")
+    .replace(/!\./g, "!")
+    .replace(/\?\./g, "?")
+    .replace(/\.+/g, ".")
+    .replace(/!+/g, "!")
+    .replace(/\?+/g, "?")
     .trim();
 
   // Dividir en 2 mitades por oraciones
