@@ -138,12 +138,12 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     .trim();
 
   // Dividir en 2 mitades por oraciones
-  const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+  const sentences = cleanText.match(/[^.!?]+[.!?]*|[^.!?]+$/g) || [cleanText];
   // Dividir en segmentos de max 400 caracteres
   const parts = [];
   let current = "";
   for (const s of sentences) {
-    if ((current + " " + s).trim().length > 400) {
+    if ((current + " " + s).trim().length > 1200) {
       if (current.trim()) parts.push(current.trim());
       current = s;
     } else {
@@ -159,9 +159,12 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     const segPath = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
     segFiles.push(segPath);
     await new Promise((resolve, reject) => {
-      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${parts[i]}" --write-media "${segPath}"`;
+      const txtPath = path.join(tmpDir, `tts_${Date.now()}_${i}.txt`);
+      fs.writeFileSync(txtPath, parts[i], "utf8");
+      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --file "${txtPath}" --write-media "${segPath}"`;
       const tryRun = (attempts) => {
         exec(cmd, { maxBuffer: 1024 * 1024 * 50, timeout: 60000 }, (err, stdout, stderr) => {
+          try { fs.unlinkSync(txtPath); } catch {}
           if (err && attempts > 1) return tryRun(attempts - 1);
           if (err) return reject(stderr || err.message);
           resolve();
