@@ -159,17 +159,20 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     const segPath = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
     segFiles.push(segPath);
     await new Promise((resolve, reject) => {
-      const txtPath = path.join(tmpDir, `tts_${i}_${Date.now()}.txt`);
-      fs.writeFileSync(txtPath, parts[i], "utf8");
-      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --file "${txtPath}" --write-media "${segPath}"`;
+      const escapedText = parts[i]
+        .replace(/"/g, '\\"')
+        .replace(/`/g, '\\`')
+        .replace(/\$/g, '\\$');
+      const cmd = `python3 /app/tts.py "${escapedText}" "${voice}" "${segPath}"`;
       const tryRun = (attempts) => {
         exec(cmd, { maxBuffer: 1024 * 1024 * 50, timeout: 120000 }, (err, stdout, stderr) => {
           if (err && attempts > 1) {
             setTimeout(() => tryRun(attempts - 1), 2000);
             return;
           }
-          try { fs.unlinkSync(txtPath); } catch {}
           if (err) return reject(stderr || err.message);
+          const stats = fs.existsSync(segPath) ? fs.statSync(segPath) : null;
+          console.log("MP3 SIZE seg " + i + ":", stats ? stats.size : "NO EXISTE");
           resolve();
         });
       };
@@ -186,7 +189,7 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   const listFile = path.join(tmpDir, `list_${Date.now()}.txt`);
   fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
   await new Promise((resolve, reject) => {
-    exec(`ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${audioPath}"`,
+    exec(`ffmpeg -y -f concat -safe 0 -i "${listFile}" -c:a libmp3lame -q:a 4 "${audioPath}"`,
       { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
         if (err) return reject(stderr || err.message);
         resolve();
