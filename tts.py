@@ -7,7 +7,7 @@ VOICE = sys.argv[2]
 OUTPUT = sys.argv[3]
 
 async def main():
-    communicate = edge_tts.Communicate(TEXT, VOICE, rate="+20%")
+    communicate = edge_tts.Communicate(TEXT, VOICE, rate="+10%")
     await communicate.save(OUTPUT)
 
 asyncio.run(main())
