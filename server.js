@@ -149,7 +149,7 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
   if (segments.length === 1) {
     // Un solo segmento — comportamiento original
     return new Promise((resolve, reject) => {
-      const cmd = `edge-tts --voice "${voice}" --text "${segments[0]}" --write-media "${audioPath}"`;
+      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${segments[0]}" --write-media "${audioPath}"`;
       exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
         if (err) return reject(stderr || err.message);
         resolve(audioPath);
@@ -164,7 +164,7 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     const segPath = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
     segFiles.push(segPath);
     await new Promise((resolve, reject) => {
-      const cmd = `edge-tts --voice "${voice}" --text "${segments[i]}" --write-media "${segPath}"`;
+      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${segments[i]}" --write-media "${segPath}"`;
       exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
         if (err) return reject(stderr || err.message);
         resolve();
@@ -446,7 +446,19 @@ app.post("/process-video", async (req, res) => {
     const dt2 = line2 ? "drawtext=text='" + line2 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'" : '';
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
-    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + fadeIn + "," + drawtext;
+    // Efectos adicionales aleatorios
+    const extraEffects = [
+      "zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",  // zoom in suave
+      "vignette=PI/4",                                                                          // vignette
+      "unsharp=5:5:1.0:5:5:0.0",                                                               // sharpen
+      "eq=brightness='0.05*sin(2*PI*t/8)':contrast=1.05",                                     // brillo rítmico
+    ];
+    // Elegir entre 1 y 3 efectos aleatorios sin repetir
+    const shuffled = extraEffects.sort(() => Math.random() - 0.5);
+    const numEffects = Math.floor(Math.random() * 3) + 1;
+    const selectedEffects = shuffled.slice(0, numEffects).join(",");
+
+    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + selectedEffects + "," + fadeIn + "," + drawtext;
 
     console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
 
