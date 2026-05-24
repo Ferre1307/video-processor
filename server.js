@@ -409,8 +409,7 @@ app.post("/process-video", async (req, res) => {
     console.log(`⏱️ Duración: ${audioDuration}s`);
 
     // Efectos aleatorios por video
-    const speeds = [0.85, 0.9, 1.0, 1.1, 1.15];
-    const speed = speeds[Math.floor(Math.random() * speeds.length)];
+    const speed = 1.0;
 
     const colorFilters = [
       "eq=brightness=0.02:contrast=1.05:saturation=1.1",
