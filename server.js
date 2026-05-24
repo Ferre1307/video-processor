@@ -441,16 +441,18 @@ app.post("/process-video", async (req, res) => {
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     // Efectos adicionales aleatorios
+    // Un solo efecto aleatorio aplicado solo en parte del video
+    const dur = audioDuration;
+    const tStart = (dur * 0.25).toFixed(1);
+    const tEnd = (dur * 0.55).toFixed(1);
+
     const extraEffects = [
-      "vignette=PI/4",
-      "unsharp=5:5:1.0:5:5:0.0",
-      "eq=brightness='0.05*sin(2*PI*t/8)':contrast=1.05",
-      "curves=vintage",
+      `vignette=PI/4:enable='between(t,${tStart},${tEnd})'`,
+      `unsharp=5:5:1.0:5:5:0.0:enable='between(t,${tStart},${tEnd})'`,
+      `eq=brightness=0.04:contrast=1.05:enable='between(t,${tStart},${tEnd})'`,
+      `curves=vintage:enable='between(t,${tStart},${tEnd})'`,
     ];
-    // Elegir entre 1 y 3 efectos aleatorios sin repetir
-    const shuffled = extraEffects.sort(() => Math.random() - 0.5);
-    const numEffects = Math.floor(Math.random() * 3) + 1;
-    const selectedEffects = shuffled.slice(0, numEffects).join(",");
+    const selectedEffects = extraEffects[Math.floor(Math.random() * extraEffects.length)];
 
     const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + selectedEffects + "," + fadeIn + "," + drawtext;
 
