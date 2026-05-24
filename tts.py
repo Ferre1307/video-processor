@@ -2,9 +2,12 @@ import asyncio
 import edge_tts
 import sys
 
-TEXT = sys.argv[1]
+TEXT_FILE = sys.argv[1]
 VOICE = sys.argv[2]
 OUTPUT = sys.argv[3]
+
+with open(TEXT_FILE, "r", encoding="utf-8") as f:
+    TEXT = f.read()
 
 async def main():
     communicate = edge_tts.Communicate(TEXT, VOICE, rate="+10%")
