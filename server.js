@@ -448,10 +448,10 @@ app.post("/process-video", async (req, res) => {
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     // Efectos adicionales aleatorios
     const extraEffects = [
-      "zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",  // zoom in suave
-      "vignette=PI/4",                                                                          // vignette
-      "unsharp=5:5:1.0:5:5:0.0",                                                               // sharpen
-      "eq=brightness='0.05*sin(2*PI*t/8)':contrast=1.05",                                     // brillo rítmico
+      "vignette=PI/4",
+      "unsharp=5:5:1.0:5:5:0.0",
+      "eq=brightness='0.05*sin(2*PI*t/8)':contrast=1.05",
+      "curves=vintage",
     ];
     // Elegir entre 1 y 3 efectos aleatorios sin repetir
     const shuffled = extraEffects.sort(() => Math.random() - 0.5);
