@@ -132,47 +132,38 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     .replace(/\bvideos\b/gi, "bideos")
     .trim();
 
-  // Dividir en segmentos de 500 caracteres por oracion
+  // Dividir en 2 mitades por oraciones
   const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-  const segments = [];
-  let current = "";
-  for (const s of sentences) {
-    if ((current + s).length > 1000) {
-      if (current) segments.push(current.trim());
-      current = s;
-    } else {
-      current += " " + s;
-    }
-  }
-  if (current.trim()) segments.push(current.trim());
+  const mid = Math.ceil(sentences.length / 2);
+  const part1 = sentences.slice(0, mid).join(" ").trim();
+  const part2 = sentences.slice(mid).join(" ").trim();
+  const parts = part2 ? [part1, part2] : [part1];
 
-  if (segments.length === 1) {
-    // Un solo segmento — comportamiento original
-    return new Promise((resolve, reject) => {
-      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${segments[0]}" --write-media "${audioPath}"`;
-      exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-        if (err) return reject(stderr || err.message);
-        resolve(audioPath);
-      });
-    });
-  }
-
-  // Múltiples segmentos — generar y concatenar con ffmpeg
   const tmpDir = path.dirname(audioPath);
   const segFiles = [];
-  for (let i = 0; i < segments.length; i++) {
+
+  for (let i = 0; i < parts.length; i++) {
     const segPath = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
     segFiles.push(segPath);
     await new Promise((resolve, reject) => {
-      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${segments[i]}" --write-media "${segPath}"`;
-      exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-        if (err) return reject(stderr || err.message);
-        resolve();
-      });
+      const cmd = `edge-tts --voice "${voice}" --rate="+20%" --text "${parts[i]}" --write-media "${segPath}"`;
+      const tryRun = (attempts) => {
+        exec(cmd, { maxBuffer: 1024 * 1024 * 50, timeout: 60000 }, (err, stdout, stderr) => {
+          if (err && attempts > 1) return tryRun(attempts - 1);
+          if (err) return reject(stderr || err.message);
+          resolve();
+        });
+      };
+      tryRun(3);
     });
   }
 
-  // Concatenar segmentos con ffmpeg
+  if (segFiles.length === 1) {
+    fs.renameSync(segFiles[0], audioPath);
+    return audioPath;
+  }
+
+  // Concatenar las 2 partes
   const listFile = path.join(tmpDir, `list_${Date.now()}.txt`);
   fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
   await new Promise((resolve, reject) => {
@@ -183,12 +174,12 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
       });
   });
 
-  // Limpiar archivos temporales
   segFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(listFile); } catch {}
 
   return audioPath;
 }
+
 
 function uploadToDropbox(filePath, dropboxPath, token) {
   return new Promise((resolve, reject) => {
