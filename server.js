@@ -5,6 +5,8 @@ const path = require("path");
 const https = require("https");
 const http = require("http");
 
+const { normalizeTTS } = require("./tts_pronunciation_map");
+
 const app = express();
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
@@ -114,28 +116,9 @@ function run(cmd) {
 }
 
 async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
-  const cleanText = text
-    .replace(/[\r\n]+/g, " ")
+  const cleanText = normalizeTTS(text)
     .replace(/"/g, "'")
-    .replace(/[\x00-\x1F\x7F]/g, " ")
-    .replace(/\bnote\b/gi, "nóte")
-    .replace(/\blink\b/gi, "enlace")
-    .replace(/\bfeed\b/gi, "perfil")
-    .replace(/\bstory\b/gi, "historia")
-    .replace(/\bstories\b/gi, "historias")
-    .replace(/\breels\b/gi, "riils")
-    .replace(/\blive\b/gi, "laiv")
-    .replace(/\bpost\b/gi, "póst")
-    .replace(/\bposts\b/gi, "pósts")
-    .replace(/\bnatural\b/gi, "naturál")
-    .replace(/\bvideo\b/gi, "bideo")
-    .replace(/\bvideos\b/gi, "bideos")
-    .replace(/!\./g, "!")
-    .replace(/\?\./g, "?")
-    .replace(/\.+/g, ".")
-    .replace(/!+/g, "!")
-    .replace(/\?+/g, "?")
-    .trim();
+    .replace(/[\x00-\x1F\x7F]/g, " ");
 
   // Dividir en 2 mitades por oraciones
   const sentences = cleanText.match(/[^.!?]+[.!?]*|[^.!?]+$/g) || [cleanText];
