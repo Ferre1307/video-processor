@@ -419,68 +419,17 @@ app.post("/process-video", async (req, res) => {
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1;
 
-    // Elegir transición aleatoria para este video
-    const transitionTypes = ["fade_black", "flash", "blur_fade", "zoom_pulse"];
-    const chosenTransition = transitionTypes[Math.floor(Math.random() * transitionTypes.length)];
+    // Variante aleatoria por video: hflip y/o velocidad del loop visual
+    const variants = [
+      "",                      // normal
+      "hflip,",                // espejado
+      "setpts=0.8*PTS,",       // loop más rápido
+      "setpts=1.2*PTS,hflip,", // loop más lento + espejado
+    ];
+    const chosenVariant = variants[Math.floor(Math.random() * variants.length)];
+    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${chosenVariant}fade=t=in:st=0:d=0.4,${drawtext}[vout]`;
 
-    function buildTransitionFilter(type, duration, interval, fadeDuration = 0.3) {
-      const cuts = [];
-      for (let t = interval; t < duration; t += interval) cuts.push(parseFloat(t.toFixed(2)));
-
-      if (type === "fade_black") {
-        // Fade a negro y vuelta cada cutInterval segundos
-        let f = `fade=t=in:st=0:d=${fadeDuration}`;
-        for (const t of cuts) {
-          f += `,fade=t=out:st=${(t - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-          f += `,fade=t=in:st=${t.toFixed(2)}:d=${fadeDuration}`;
-        }
-        f += `,fade=t=out:st=${(duration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-        return f;
-
-      } else if (type === "flash") {
-        // Flash de brillo blanco en cada corte (destello rápido)
-        let f = `fade=t=in:st=0:d=${fadeDuration}`;
-        for (const t of cuts) {
-          // Fade a blanco (geq simula flash: sube brillo rápido y baja)
-          f += `,fade=t=out:st=${(t - 0.15).toFixed(2)}:d=0.15:color=white`;
-          f += `,fade=t=in:st=${t.toFixed(2)}:d=0.15:color=white`;
-        }
-        f += `,fade=t=out:st=${(duration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-        return f;
-
-      } else if (type === "blur_fade") {
-        // Fade a negro con pausa más larga — simula blur de entrada
-        const bd = 0.5;
-        let f = `fade=t=in:st=0:d=${bd}`;
-        for (const t of cuts) {
-          f += `,fade=t=out:st=${(t - bd).toFixed(2)}:d=${bd}`;
-          f += `,fade=t=in:st=${t.toFixed(2)}:d=${bd}`;
-        }
-        f += `,fade=t=out:st=${(duration - bd).toFixed(2)}:d=${bd}`;
-        return f;
-
-      } else if (type === "zoom_pulse") {
-        // Fade a negro + zoom in suave al inicio de cada segmento
-        // El zoom se logra con scale2ref dentro del fade — usamos fade normal + crop leve
-        let f = `fade=t=in:st=0:d=${fadeDuration}`;
-        for (const t of cuts) {
-          f += `,fade=t=out:st=${(t - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-          f += `,fade=t=in:st=${t.toFixed(2)}:d=${fadeDuration}`;
-        }
-        f += `,fade=t=out:st=${(duration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-        // Zoom pulse: escala levemente el video para dar sensación de pulso
-        f += `,scale=iw*1.04:ih*1.04,crop=iw/1.04:ih/1.04`;
-        return f;
-      }
-
-      // fallback: fade simple
-      return `fade=t=in:st=0:d=${fadeDuration},fade=t=out:st=${(duration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-    }
-
-    const transitionFilter = buildTransitionFilter(chosenTransition, audioDuration, cut_interval);
-    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${transitionFilter},${drawtext}[vout]`;
-
-    console.log(`🎬 Transición elegida: ${chosenTransition}`);
+    console.log(`🎬 Variante elegida: ${chosenVariant || "normal"}`);
     console.log("🎬 Procesando con FFmpeg...");
 
     let ffmpegCmd;
