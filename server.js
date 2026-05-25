@@ -80,7 +80,6 @@ function download(url, dest) {
   });
 }
 
-// Descarga archivo desde Dropbox usando el token (sin URLs que expiren)
 function downloadFromDropbox(dropboxPath, dest, token) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -120,9 +119,7 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     .replace(/"/g, "'")
     .replace(/[\x00-\x1F\x7F]/g, " ");
 
-  // Dividir en 2 mitades por oraciones
   const sentences = cleanText.match(/[^.!?]+[.!?]*|[^.!?]+$/g) || [cleanText];
-  // Dividir en segmentos de max 400 caracteres
   const parts = [];
   let current = "";
   for (const s of sentences) {
@@ -168,7 +165,6 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     return audioPath;
   }
 
-  // Concatenar las 2 partes
   const listFile = path.join(tmpDir, `list_${Date.now()}.txt`);
   fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
   await new Promise((resolve, reject) => {
@@ -179,11 +175,10 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
       });
   });
 
-  // Concatenar SRT files
+  const srtPath = audioPath.replace(".mp3", ".srt");
   const srtFiles = segFiles.map(f => f.replace(".mp3", ".srt"));
   let srtContent = "";
   let subIndex = 1;
-  let timeOffset = 0;
   for (const srtFile of srtFiles) {
     if (fs.existsSync(srtFile)) {
       const lines = fs.readFileSync(srtFile, "utf8").split("\n");
@@ -204,7 +199,6 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
 
   return audioPath;
 }
-
 
 function uploadToDropbox(filePath, dropboxPath, token) {
   return new Promise((resolve, reject) => {
@@ -357,27 +351,6 @@ function getUniqueDropboxPath(dropboxPath, token) {
   });
 }
 
-function buildFadeFilter(audioDuration, cutInterval = 10, fadeDuration = 0.3) {
-  const cuts = [];
-  for (let t = cutInterval; t < audioDuration; t += cutInterval) {
-    cuts.push(t);
-  }
-  if (cuts.length === 0) {
-    return `fade=t=in:st=0:d=${fadeDuration},fade=t=out:st=${Math.max(0, audioDuration - fadeDuration)}:d=${fadeDuration}`;
-  }
-  let filter = `fade=t=in:st=0:d=${fadeDuration}`;
-  for (const cut of cuts) {
-    const fadeOutStart = cut - fadeDuration;
-    const fadeInStart = cut;
-    if (fadeOutStart > 0) {
-      filter += `,fade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fadeDuration}`;
-      filter += `,fade=t=in:st=${fadeInStart.toFixed(2)}:d=${fadeDuration}`;
-    }
-  }
-  filter += `,fade=t=out:st=${Math.max(0, audioDuration - fadeDuration).toFixed(2)}:d=${fadeDuration}`;
-  return filter;
-}
-
 app.post("/process-video", async (req, res) => {
   const {
     video_url,
@@ -403,7 +376,6 @@ app.post("/process-video", async (req, res) => {
   const srtPath = path.join(TMP, `subs_${id}.srt`);
 
   try {
-    // Obtener token fresco automáticamente
     const freshToken = await getDropboxToken();
     console.log("📥 Descargando video...");
     if (video_path && video_path.trim() !== "") {
@@ -430,17 +402,10 @@ app.post("/process-video", async (req, res) => {
     const audioDuration = parseFloat(durationOut.trim()) + 0.5;
     console.log(`⏱️ Duración: ${audioDuration}s`);
 
-    // Efectos aleatorios por video
-    const speed = 1.0;
-
-
-
     const fadeIn = "fade=t=in:st=0:d=0.4";
-    const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
-    const audioSpeed = speed !== 1.0 ? ",atempo=" + speed.toFixed(3) : "";
 
-    // Gancho desde portada del Sheet - texto completo dividido en lineas
-    const ganchoRaw = (portada || text.split(' ').slice(0,6).join(' '))
+    // Texto de portada dividido en 3 líneas
+    const ganchoRaw = (portada || text.split(' ').slice(0, 6).join(' '))
       .replace(/[\r\n]+/g, ' ').trim()
       .replace(/'/g, '')
       .replace(/[{}\[\]\\:=@#%&*<>|;"]/g, '');
@@ -454,39 +419,20 @@ app.post("/process-video", async (req, res) => {
     const dt1 = line1 ? "drawtext=text='" + line1 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-90:enable='between(t,0,3)'" : '';
     const dt2 = line2 ? "drawtext=text='" + line2 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)-10:enable='between(t,0,3)'" : '';
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
-    const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
-    // Efectos adicionales aleatorios
-    // 4 tipos de transiciones xfade - una aleatoria por video
-    const xfadeTypes = ["fade", "wipeleft", "circleopen", "fadeblack"];
-    const xfadeType = xfadeTypes[Math.floor(Math.random() * xfadeTypes.length)];
-    const xfadeInterval = 8;
-    const xfadeDur = 0.4;
-    
-    // Construir filter_complex para xfade entre segmentos del video
-    const numTransitions = Math.floor(audioDuration / xfadeInterval);
-    let xfadeFilter = "[0:v]scale=720:1280,format=yuv420p[base]";
-    let lastLabel = "base";
-    
-    for (let i = 0; i < numTransitions; i++) {
-      const offset = ((i + 1) * xfadeInterval - xfadeDur).toFixed(2);
-      const newLabel = `v${i}`;
-      xfadeFilter += `;[${lastLabel}]xfade=transition=${xfadeType}:duration=${xfadeDur}:offset=${offset}[${newLabel}]`;
-      lastLabel = newLabel;
-    }
-    
-    // Agregar fadeIn y drawtext al último label
-    xfadeFilter += `;[${lastLabel}]${fadeIn},${drawtext}[vout]`;
+    const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1;
 
-    console.log("🎬 Transición xfade: " + xfadeType);
+    // Filter simple: scale + fade in + drawtext (un solo input de video, sin xfade)
+    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${fadeIn},${drawtext}[vout]`;
 
-    // ✅ FIX pantalla negra + xfade: filter_complex combina video y audio
+    console.log("🎬 Procesando con FFmpeg...");
+
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = "ffmpeg -y" +
         " -stream_loop -1 -i \"" + videoPath + "\"" +
         " -i \"" + audioPath + "\"" +
         " -stream_loop -1 -i \"" + musicPath + "\"" +
-        " -filter_complex \"" + xfadeFilter + ";[1:a]volume=1.0" + audioSpeed + "[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
+        " -filter_complex \"" + videoFilter + ";[1:a]volume=1.0[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
         " -map \"[vout]\"" +
         " -map \"[aout]\"" +
         " -t " + audioDuration +
@@ -498,7 +444,7 @@ app.post("/process-video", async (req, res) => {
       ffmpegCmd = "ffmpeg -y" +
         " -stream_loop -1 -i \"" + videoPath + "\"" +
         " -i \"" + audioPath + "\"" +
-        " -filter_complex \"" + xfadeFilter + ";[1:a]volume=1.0" + audioSpeed + "[aout]\"" +
+        " -filter_complex \"" + videoFilter + ";[1:a]volume=1.0[aout]\"" +
         " -map \"[vout]\"" +
         " -map \"[aout]\"" +
         " -t " + audioDuration +
@@ -508,8 +454,6 @@ app.post("/process-video", async (req, res) => {
         " \"" + outputPath + "\"";
     }
 
-
-    console.log("🎬 Procesando con FFmpeg (modo bajo RAM)...");
     await run(ffmpegCmd);
 
     const finalOutputPath = await getUniqueDropboxPath(dropbox_output_path, freshToken);
