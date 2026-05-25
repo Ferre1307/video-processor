@@ -456,48 +456,39 @@ app.post("/process-video", async (req, res) => {
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     // Efectos adicionales aleatorios
-    // 4 tipos de transiciones, una aleatoria por video aplicada cada 8 segundos
-    const transitionTypes = ["crossfade", "wipeleft", "circleout", "fadecolor"];
-    const transType = transitionTypes[Math.floor(Math.random() * transitionTypes.length)];
-    const interval = 8;
-    let transFilter = "";
-
-    for (let t = interval; t < audioDuration; t += interval) {
-      const fo = (t - 0.4).toFixed(2);
-      const fi = t.toFixed(2);
-      if (transType === "crossfade") {
-        // Fundido cruzado: fade out y fade in superpuestos
-        transFilter += `,fade=t=out:st=${fo}:d=0.4`;
-        transFilter += `,fade=t=in:st=${fi}:d=0.4`;
-      } else if (transType === "wipeleft") {
-        // Barrido a la izquierda: fade out rápido blanco
-        transFilter += `,fade=t=out:st=${fo}:d=0.2:color=white`;
-        transFilter += `,fade=t=in:st=${fi}:d=0.2`;
-      } else if (transType === "circleout") {
-        // Círculo hacia afuera: fade out negro con duración más larga
-        transFilter += `,fade=t=out:st=${fo}:d=0.5:color=black`;
-        transFilter += `,fade=t=in:st=${fi}:d=0.5`;
-      } else if (transType === "fadecolor") {
-        // Desvanecimiento a color: fade a gris azulado
-        transFilter += `,fade=t=out:st=${fo}:d=0.35:color=0x1a1a2e`;
-        transFilter += `,fade=t=in:st=${fi}:d=0.35`;
-      }
+    // 4 tipos de transiciones xfade - una aleatoria por video
+    const xfadeTypes = ["fade", "wipeleft", "circleopen", "fadeblack"];
+    const xfadeType = xfadeTypes[Math.floor(Math.random() * xfadeTypes.length)];
+    const xfadeInterval = 8;
+    const xfadeDur = 0.4;
+    
+    // Construir filter_complex para xfade entre segmentos del video
+    const numTransitions = Math.floor(audioDuration / xfadeInterval);
+    let xfadeFilter = "[0:v]scale=720:1280,format=yuv420p[base]";
+    let lastLabel = "base";
+    
+    for (let i = 0; i < numTransitions; i++) {
+      const offset = ((i + 1) * xfadeInterval - xfadeDur).toFixed(2);
+      const newLabel = `v${i}`;
+      xfadeFilter += `;[${lastLabel}]xfade=transition=${xfadeType}:duration=${xfadeDur}:offset=${offset}[${newLabel}]`;
+      lastLabel = newLabel;
     }
+    
+    // Agregar fadeIn y drawtext al último label
+    xfadeFilter += `;[${lastLabel}]${fadeIn},${drawtext}[vout]`;
 
-    const vfFilter = "scale=720:1280,format=yuv420p," + fadeIn + "," + drawtext;
-    console.log("🎬 Transición: " + transType);
+    console.log("🎬 Transición xfade: " + xfadeType);
 
-    // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
+    // ✅ FIX pantalla negra + xfade: filter_complex combina video y audio
     let ffmpegCmd;
     if (music_url && musicPath) {
       ffmpegCmd = "ffmpeg -y" +
         " -stream_loop -1 -i \"" + videoPath + "\"" +
         " -i \"" + audioPath + "\"" +
         " -stream_loop -1 -i \"" + musicPath + "\"" +
-        " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
-        " -map 0:v:0" +
+        " -filter_complex \"" + xfadeFilter + ";[1:a]volume=1.0" + audioSpeed + "[voice];[2:a]volume=0.25,atrim=0:" + audioDuration + "[music];[voice][music]amix=inputs=2:duration=longest[aout]\"" +
+        " -map \"[vout]\"" +
         " -map \"[aout]\"" +
-        " -vf \"" + vfFilter + "\"" +
         " -t " + audioDuration +
         " -c:v libx264 -preset ultrafast -crf 28" +
         " -c:a aac -b:a 96k" +
@@ -507,10 +498,9 @@ app.post("/process-video", async (req, res) => {
       ffmpegCmd = "ffmpeg -y" +
         " -stream_loop -1 -i \"" + videoPath + "\"" +
         " -i \"" + audioPath + "\"" +
-        " -filter_complex \"[1:a]volume=1.0" + audioSpeed + "[aout]\"" +
-        " -map 0:v:0" +
+        " -filter_complex \"" + xfadeFilter + ";[1:a]volume=1.0" + audioSpeed + "[aout]\"" +
+        " -map \"[vout]\"" +
         " -map \"[aout]\"" +
-        " -vf \"" + vfFilter + "\"" +
         " -t " + audioDuration +
         " -c:v libx264 -preset ultrafast -crf 28" +
         " -c:a aac -b:a 96k" +
