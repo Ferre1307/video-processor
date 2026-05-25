@@ -144,7 +144,8 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
     await new Promise((resolve, reject) => {
       const txtPath = path.join(tmpDir, `tts_${i}_${Date.now()}.txt`);
       fs.writeFileSync(txtPath, parts[i], "utf8");
-      const cmd = `python3 /app/tts.py "${txtPath}" "${voice}" "${segPath}"`;
+      const srtSeg = segPath.replace(".mp3", ".srt");
+      const cmd = `python3 /app/tts.py "${txtPath}" "${voice}" "${segPath}" "${srtSeg}"`;
       const tryRun = (attempts) => {
         exec(cmd, { maxBuffer: 1024 * 1024 * 50, timeout: 120000 }, (err, stdout, stderr) => {
           if (err && attempts > 1) {
@@ -177,6 +178,26 @@ async function generateVoice(text, audioPath, voice = "es-PY-TaniaNeural") {
         resolve();
       });
   });
+
+  // Concatenar SRT files
+  const srtFiles = segFiles.map(f => f.replace(".mp3", ".srt"));
+  let srtContent = "";
+  let subIndex = 1;
+  let timeOffset = 0;
+  for (const srtFile of srtFiles) {
+    if (fs.existsSync(srtFile)) {
+      const lines = fs.readFileSync(srtFile, "utf8").split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (/^\d+$/.test(lines[i].trim())) {
+          srtContent += subIndex++ + "\n";
+        } else {
+          srtContent += lines[i] + "\n";
+        }
+      }
+      try { fs.unlinkSync(srtFile); } catch {}
+    }
+  }
+  if (srtContent.trim()) fs.writeFileSync(srtPath, srtContent, "utf8");
 
   segFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(listFile); } catch {}
@@ -379,6 +400,7 @@ app.post("/process-video", async (req, res) => {
   const audioPath = path.join(TMP, `audio_${id}.mp3`);
   const musicPath = music_url ? path.join(TMP, `music_${id}.mp3`) : null;
   const outputPath = path.join(TMP, `output_${id}.mp4`);
+  const srtPath = path.join(TMP, `subs_${id}.srt`);
 
   try {
     // Obtener token fresco automáticamente
@@ -411,14 +433,7 @@ app.post("/process-video", async (req, res) => {
     // Efectos aleatorios por video
     const speed = 1.0;
 
-    const colorFilters = [
-      "eq=brightness=0.02:contrast=1.05:saturation=1.1",
-      "eq=brightness=-0.02:contrast=1.08:saturation=0.95",
-      "eq=brightness=0.04:contrast=1.0:saturation=1.2",
-      "eq=brightness=0:contrast=1.1:saturation=1.05",
-      "eq=brightness=-0.03:contrast=1.03:saturation=1.15",
-    ];
-    const colorFilter = colorFilters[Math.floor(Math.random() * colorFilters.length)];
+
 
     const fadeIn = "fade=t=in:st=0:d=0.4";
     const videoSpeed = speed !== 1.0 ? "setpts=" + (1/speed).toFixed(3) + "*PTS," : "";
@@ -441,22 +456,39 @@ app.post("/process-video", async (req, res) => {
     const dt3 = line3 ? "drawtext=text='" + line3 + "':fontsize=28:fontcolor=black:fontfile=" + fontfile + ":box=1:boxcolor=white@0.9:boxborderw=15:x=(w-text_w)/2:y=(h/2)+70:enable='between(t,0,3)'" : '';
     const drawtext = [dt1, dt2, dt3].filter(Boolean).join(',') || dt1
     // Efectos adicionales aleatorios
-    // Un solo efecto aleatorio aplicado solo en parte del video
-    const dur = audioDuration;
-    const tStart = (dur * 0.25).toFixed(1);
-    const tEnd = (dur * 0.55).toFixed(1);
+    // 4 tipos de transiciones, una aleatoria por video aplicada cada 8 segundos
+    const transitionTypes = ["crossfade", "wipeleft", "circleout", "fadecolor"];
+    const transType = transitionTypes[Math.floor(Math.random() * transitionTypes.length)];
+    const interval = 8;
+    let transFilter = "";
 
-    const extraEffects = [
-      `vignette=PI/4:enable='between(t,${tStart},${tEnd})'`,
-      `unsharp=5:5:1.0:5:5:0.0:enable='between(t,${tStart},${tEnd})'`,
-      `eq=brightness=0.04:contrast=1.05:enable='between(t,${tStart},${tEnd})'`,
-      `curves=vintage:enable='between(t,${tStart},${tEnd})'`,
-    ];
-    const selectedEffects = extraEffects[Math.floor(Math.random() * extraEffects.length)];
+    for (let t = interval; t < audioDuration; t += interval) {
+      const fo = (t - 0.4).toFixed(2);
+      const fi = t.toFixed(2);
+      if (transType === "crossfade") {
+        // Fundido cruzado: fade out y fade in superpuestos
+        transFilter += `,fade=t=out:st=${fo}:d=0.4`;
+        transFilter += `,fade=t=in:st=${fi}:d=0.4`;
+      } else if (transType === "wipeleft") {
+        // Barrido a la izquierda: fade out rápido blanco
+        transFilter += `,fade=t=out:st=${fo}:d=0.2:color=white`;
+        transFilter += `,fade=t=in:st=${fi}:d=0.2`;
+      } else if (transType === "circleout") {
+        // Círculo hacia afuera: fade out negro con duración más larga
+        transFilter += `,fade=t=out:st=${fo}:d=0.5:color=black`;
+        transFilter += `,fade=t=in:st=${fi}:d=0.5`;
+      } else if (transType === "fadecolor") {
+        // Desvanecimiento a color: fade a gris azulado
+        transFilter += `,fade=t=out:st=${fo}:d=0.35:color=0x1a1a2e`;
+        transFilter += `,fade=t=in:st=${fi}:d=0.35`;
+      }
+    }
 
-    const vfFilter = "scale=720:1280,format=yuv420p," + videoSpeed + colorFilter + "," + selectedEffects + "," + fadeIn + "," + drawtext;
-
-    console.log("🎨 Efectos: velocidad=" + speed + "x, color=" + colorFilter);
+    const subtitleFilter = fs.existsSync(srtPath) 
+      ? `,subtitles='${srtPath}':force_style='FontName=Arial,FontSize=18,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Shadow=1,Alignment=2,MarginV=40,Bold=1'`
+      : "";
+    const vfFilter = "scale=720:1280,format=yuv420p" + transFilter + "," + fadeIn + subtitleFilter + "," + drawtext;
+    console.log("🎬 Transición: " + transType);
 
     // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
     let ffmpegCmd;
@@ -501,7 +533,7 @@ app.post("/process-video", async (req, res) => {
 
     const dropboxUrl = await getDropboxLink(finalOutputPath, freshToken);
 
-    [videoPath, audioPath, musicPath, outputPath].forEach((f) => {
+    [videoPath, audioPath, musicPath, outputPath, srtPath].forEach((f) => {
       if (f && fs.existsSync(f)) fs.unlinkSync(f);
     });
 
