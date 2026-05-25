@@ -484,10 +484,7 @@ app.post("/process-video", async (req, res) => {
       }
     }
 
-    const subtitleFilter = fs.existsSync(srtPath) 
-      ? `,subtitles='${srtPath}':force_style='FontName=Arial,FontSize=18,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Shadow=1,Alignment=2,MarginV=40,Bold=1'`
-      : "";
-    const vfFilter = "scale=720:1280,format=yuv420p" + transFilter + "," + fadeIn + subtitleFilter + "," + drawtext;
+    const vfFilter = "scale=720:1280,format=yuv420p" + transFilter + "," + fadeIn + "," + drawtext;
     console.log("🎬 Transición: " + transType);
 
     // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
