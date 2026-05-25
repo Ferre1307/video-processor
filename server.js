@@ -432,14 +432,50 @@ app.post("/process-video", async (req, res) => {
     ];
     const chosenVariant = variants[Math.floor(Math.random() * variants.length)];
     // Subtítulos: se agregan solo si existe el archivo SRT generado por tts.py
+    // Leer SRT y convertir a filtros drawtext sincronizados
     const hasSrt = fs.existsSync(srtPath);
     console.log(`📝 SRT encontrado: ${hasSrt} — ${srtPath}`);
-    // subtitles= requiere path escapado (los : se escapan con \\:)
-    const escapedSrtPath = srtPath.replace(/:/g, "\\:");
-    const subsFilter = hasSrt
-      ? `,subtitles=${escapedSrtPath}:force_style='Fontsize=18,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Shadow=1,Alignment=2,MarginV=40,Bold=1'`
-      : "";
-    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${chosenVariant}fade=t=in:st=0:d=0.4,${drawtext}${subsFilter}[vout]`;
+
+    let subsDrawtext = "";
+    if (hasSrt) {
+      try {
+        const srtContent = fs.readFileSync(srtPath, "utf8");
+        const blocks = srtContent.trim().split(/\n\n+/);
+        const fontfile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+        const dtParts = [];
+
+        function srtTimeToSec(t) {
+          const [h, m, rest] = t.split(":");
+          const [s, ms] = rest.split(",");
+          return parseInt(h)*3600 + parseInt(m)*60 + parseInt(s) + parseInt(ms)/1000;
+        }
+
+        for (const block of blocks) {
+          const lines = block.trim().split("\n");
+          if (lines.length < 3) continue;
+          const timeLine = lines[1];
+          const textLine = lines.slice(2).join(" ")
+            .replace(/'/g, "")
+            .replace(/[{}\[\]\\:=@#%&*<>|;"]/g, "")
+            .trim();
+          if (!textLine) continue;
+          const [startStr, endStr] = timeLine.split(" --> ");
+          const start = srtTimeToSec(startStr.trim());
+          const end = srtTimeToSec(endStr.trim());
+          dtParts.push(
+            `drawtext=text='${textLine}':fontfile=${fontfile}:fontsize=16:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-80:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`
+          );
+        }
+        if (dtParts.length > 0) {
+          subsDrawtext = "," + dtParts.join(",");
+          console.log(`📝 Subtítulos generados: ${dtParts.length} frases`);
+        }
+      } catch (e) {
+        console.log("⚠️ Error leyendo SRT:", e.message);
+      }
+    }
+
+    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${chosenVariant}fade=t=in:st=0:d=0.4,${drawtext}${subsDrawtext}[vout]`;
 
     console.log(`🎬 Variante elegida: ${chosenVariant || "normal"}`);
     console.log("🎬 Procesando con FFmpeg...");
