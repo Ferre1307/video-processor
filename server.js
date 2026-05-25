@@ -484,7 +484,7 @@ app.post("/process-video", async (req, res) => {
       }
     }
 
-    const vfFilter = "scale=720:1280,format=yuv420p" + transFilter + "," + fadeIn + "," + drawtext;
+    const vfFilter = "scale=720:1280,format=yuv420p," + fadeIn + "," + drawtext;
     console.log("🎬 Transición: " + transType);
 
     // ✅ FIX pantalla negra: -vf para video, filter_complex SOLO para audio
