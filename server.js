@@ -427,7 +427,12 @@ app.post("/process-video", async (req, res) => {
       "setpts=1.2*PTS,hflip,", // loop más lento + espejado
     ];
     const chosenVariant = variants[Math.floor(Math.random() * variants.length)];
-    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${chosenVariant}fade=t=in:st=0:d=0.4,${drawtext}[vout]`;
+    // Subtítulos: se agregan solo si existe el archivo SRT generado por tts.py
+    const hasSrt = fs.existsSync(srtPath);
+    const subsFilter = hasSrt
+      ? `,subtitles='${srtPath}':force_style='Fontsize=18,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Shadow=1,Alignment=2,MarginV=40,Bold=1'`
+      : "";
+    const videoFilter = `[0:v]scale=720:1280,format=yuv420p,${chosenVariant}fade=t=in:st=0:d=0.4,${drawtext}${subsFilter}[vout]`;
 
     console.log(`🎬 Variante elegida: ${chosenVariant || "normal"}`);
     console.log("🎬 Procesando con FFmpeg...");
